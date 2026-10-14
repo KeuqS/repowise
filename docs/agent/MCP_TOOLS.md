@@ -527,6 +527,8 @@ Only four tools answer across every repo with `repo="all"`. The rest return an e
 | `get_conformance` | No `"all"` value; it covers the whole workspace when `repo` is omitted |
 | `get_blast_radius`, `get_architecture`, `list_repos` | No `repo` parameter; they always read the whole workspace |
 
+A `repo="all"` call queries up to 4 repos at a time and gives each 60 seconds (`REPOWISE_WORKSPACE_CONCURRENCY`, `REPOWISE_WORKSPACE_REPO_TIMEOUT_S`). A repo that fails to open, errors or times out is listed in `repos_failed` with its reason while the other repos still answer. A repo whose index is behind its checkout is listed in `repos_stale` with `indexed_commit` and `live_head`, and its rows carry `stale: true`. Both keys appear only when non-empty.
+
 Single-repo tools also gain cross-repo evidence in workspace mode:
 
 - `get_context` adds a per-target `cross_repo` block: co-change partners in other repos and contract consumers or providers.
