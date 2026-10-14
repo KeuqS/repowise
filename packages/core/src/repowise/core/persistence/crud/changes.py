@@ -139,17 +139,22 @@ async def get_commit_labels(
 
 
 async def get_category_inputs(
-    session: AsyncSession, repository_id: str
+    session: AsyncSession, repository_id: str, limit: int = 1000
 ) -> tuple[list[tuple[str, str, str | None]], list[tuple[str, str, str]]]:
-    """``(sha, subject, category)`` per commit and ``(change_id, title, category)`` per change."""
+    """``(sha, subject, category)`` per commit and ``(change_id, title, category)`` per change.
+
+    Newest *limit* of each, so the read stays bounded as the tables grow.
+    """
     commits = await session.execute(
-        select(GitCommit.sha, GitCommit.subject, GitCommit.category).where(
-            GitCommit.repository_id == repository_id
-        )
+        select(GitCommit.sha, GitCommit.subject, GitCommit.category)
+        .where(GitCommit.repository_id == repository_id)
+        .order_by(GitCommit.committed_at.desc().nulls_last())
+        .limit(limit)
     )
     changes = await session.execute(
-        select(Change.change_id, Change.title, Change.category).where(
-            Change.repository_id == repository_id
-        )
+        select(Change.change_id, Change.title, Change.category)
+        .where(Change.repository_id == repository_id)
+        .order_by(Change.merged_at.desc().nulls_last())
+        .limit(limit)
     )
     return list(commits.tuples().all()), list(changes.tuples().all())
