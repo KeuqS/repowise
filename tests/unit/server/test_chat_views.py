@@ -167,6 +167,19 @@ def test_test_coverage_carries_the_report_reach_as_coverage():
     assert part["data"]["total_rows"] == 1382
 
 
+def test_a_limit_cut_without_a_reported_total_is_still_truncated():
+    data = {"global_hotspots": [{"file_path": f"f{i}.py", "fix_count": i} for i in range(5)]}
+    part = _build(data, "risk", "get_risk", "risk.hotspots", limit=2)
+    assert part["data"]["total_rows"] == 5
+    assert part["data"]["truncated"] is True
+
+
+def test_an_empty_chart_source_is_refused():
+    with pytest.raises(ViewError) as err:
+        _build({"summary": {"by_kind": {"x": "n/a"}}}, "dead_code", "get_dead_code", "dead_code.by_kind")
+    assert err.value.code == "no_data"
+
+
 def test_dead_code_by_tier_and_by_kind():
     tiers = _build(DEAD_CODE, "dead_code", "get_dead_code", "dead_code.by_tier")
     assert _series(tiers, "findings") == [0, 15, 0]

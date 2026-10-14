@@ -26,7 +26,7 @@ from uuid import uuid4
 
 from pydantic import TypeAdapter, ValidationError
 
-from repowise.core.registry.plugins import SeamRegistry
+from repowise.core.registry.plugins import SeamRegistry, load_plugins
 from repowise.server.chat_artifacts import ARTIFACT_ID_FIELD
 from repowise.server.schemas.evidence import MAX_WIRE_NUMBER
 from repowise.server.schemas.views import (
@@ -120,11 +120,17 @@ def register_view_builder(
     return decorate
 
 
+def _view_names() -> list[str]:
+    """Registered view names, plugins included (``names`` alone does not load them)."""
+    load_plugins()
+    return view_builders.names
+
+
 def views_for(artifact_type: str) -> list[str]:
     """View names that accept an artifact of *artifact_type*."""
     return [
         name
-        for name in view_builders.names
+        for name in _view_names()
         if (types := view_builders.get(name).artifact_types) is None or artifact_type in types
     ]
 
@@ -174,7 +180,7 @@ def build_view(
     part_id: str,
 ) -> dict[str, Any]:
     """Build and validate one view part, or raise ``ViewError``."""
-    if view not in view_builders.names:
+    if view not in _view_names():
         raise ViewError(
             f"unknown view {view!r}; views for this artifact: {views_for(artifact.artifact_type)}",
             code="unknown_view",
@@ -300,7 +306,7 @@ class TurnViews:
 def show_view_schema(artifact_types: list[str] | None = None) -> dict[str, Any]:
     """OpenAI-format definition of the chat-only ``show_view`` tool."""
     names = sorted(
-        {n for t in artifact_types for n in views_for(t)} if artifact_types else view_builders.names
+        {n for t in artifact_types for n in views_for(t)} if artifact_types else _view_names()
     )
     return {
         "type": "function",
@@ -478,6 +484,8 @@ def _chart(
     total_rows: int | None = None,
     chart_type: str = "bar",
 ) -> dict[str, Any]:
+    if not rows:
+        raise ViewError("this result has nothing to chart", code="no_data")
     total = len(rows) if total_rows is None else max(total_rows, len(rows))
     return {
         "kind": "chart",
@@ -517,7 +525,7 @@ def health_bands_view(artifact: ViewArtifact, options: Mapping[str, Any]) -> dic
     rows = [
         {"band": band.replace("_", " "), "files": bands[band]["files"]}
         for band in _HEALTH_BANDS
-        if isinstance(bands.get(band), Mapping) and "files" in bands[band]
+        if isinstance(bands.get(band), Mapping) and isinstance(bands[band].get("files"), int)
     ]
     total = sum(row["files"] for row in rows)
     return _chart(
@@ -580,13 +588,18 @@ def health_test_coverage_view(
     files = coverage.get("files") if isinstance(coverage, Mapping) else None
     if not isinstance(files, list):
         raise ViewError('this result has no coverage; call get_health(include=["coverage"])')
-    shown = [f for f in files if isinstance(f, Mapping)][: _limit(options, cap=100)]
+    usable = [f for f in files if isinstance(f, Mapping) and f.get("file_path")]
+    shown = usable[: _limit(options, cap=100)]
     rows = [
-        {"file": {"type": "file", "id": f["file_path"]}, "line_coverage": _wire(f.get("line_coverage_pct"))}
+        {
+            "file": {"type": "file", "id": f["file_path"]},
+            "line_coverage": _wire(f.get("line_coverage_pct")),
+        }
         for f in shown
     ]
     summary_pct = (coverage.get("summary") or {}).get("line_coverage_pct")
     total = coverage.get("files_total")
+    total = max(total, len(usable)) if isinstance(total, int) else len(usable)
     part = _chart(
         title="Line coverage by file",
         summary=f"{len(rows)} files from the coverage report.",
@@ -595,7 +608,7 @@ def health_test_coverage_view(
         series=[("line_coverage", "Line coverage")],
         unit="%",
         rows=rows,
-        total_rows=total if isinstance(total, int) else None,
+        total_rows=total,
     )
     if isinstance(summary_pct, (int, float)) and 0 <= summary_pct <= 100:
         # Rounded so the percentage converts without float noise (88.84 -> 0.8884).
@@ -639,7 +652,11 @@ def dead_code_by_kind_view(artifact: ViewArtifact, options: Mapping[str, Any]) -
     by_kind = (artifact.data.get("summary") or {}).get("by_kind")
     if not isinstance(by_kind, Mapping) or not by_kind:
         raise ViewError("this result has no findings by kind")
-    rows = [{"kind": kind, "findings": count} for kind, count in by_kind.items()]
+    rows = [
+        {"kind": kind, "findings": count}
+        for kind, count in by_kind.items()
+        if isinstance(count, int) and not isinstance(count, bool)
+    ]
     return _chart(
         title="Dead-code findings by kind",
         summary=f"{sum(r['findings'] for r in rows)} open findings.",
@@ -660,13 +677,14 @@ def risk_hotspots_view(artifact: ViewArtifact, options: Mapping[str, Any]) -> di
     hotspots = artifact.data.get("global_hotspots")
     if not isinstance(hotspots, list) or not hotspots:
         raise ViewError("this result has no global hotspots")
-    shown = [h for h in hotspots if isinstance(h, Mapping) and h.get("file_path")]
-    shown = shown[: _limit(options, cap=100)]
+    usable = [h for h in hotspots if isinstance(h, Mapping) and h.get("file_path")]
+    shown = usable[: _limit(options, cap=100)]
     rows = [
         {"file": {"type": "file", "id": h["file_path"]}, "fix_count": _wire(h.get("fix_count"))}
         for h in shown
     ]
     total = artifact.data.get("global_hotspots_total")
+    total = max(total, len(usable)) if isinstance(total, int) else len(usable)
     return _chart(
         title="Bug fixes on top hotspots",
         summary=f"Bug-fix commits on {len(rows)} hotspot files.",
@@ -675,5 +693,5 @@ def risk_hotspots_view(artifact: ViewArtifact, options: Mapping[str, Any]) -> di
         series=[("fix_count", "Bug-fix commits")],
         unit="commits",
         rows=rows,
-        total_rows=total if isinstance(total, int) else None,
+        total_rows=total,
     )
