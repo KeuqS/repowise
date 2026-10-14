@@ -240,7 +240,7 @@ class _AgentTurn:
         plan = plan_grounding(page_context, (tool.entry for tool in tool_catalog))
         if plan is not None and _history_has_call(self.llm_messages, plan.tool_name, plan.arguments):
             plan = None
-        grounding = await run_grounding(plan, self.execute)
+        grounding = await run_grounding(plan, self.execute, unstamp=self.views.unstamp)
         if grounding is None:
             return None
         self.llm_messages.extend(grounding.llm_messages())
@@ -363,13 +363,15 @@ class _AgentTurn:
     ) -> str:
         """Record one tool result as a stored call and return its SSE event."""
         artifact_type = get_artifact_type(name, self.repo_path)
-        summary = _build_tool_summary(name, result)
+        artifact_id, data = self.views.unstamp(result)
+        summary = _build_tool_summary(name, data)
         artifact = create_artifact_envelope(
             tool_name=name,
             artifact_type=artifact_type,
             presentation=get_artifact_presentation(name, self.repo_path),
-            data=result,
+            data=data,
             title=summary,
+            artifact_id=artifact_id,
             evidence_basis=get_artifact_evidence_basis(name, self.repo_path),
         )
         self.tool_calls.append(_stored_tool_call(tool_id, name, arguments, summary, artifact))

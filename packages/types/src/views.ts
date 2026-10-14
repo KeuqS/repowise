@@ -22,6 +22,9 @@ import type { CardBasis, CardRef } from "./evidence.js";
 
 export const VIEW_SCHEMA_VERSION = 1 as const;
 
+/** The chat-only tool that builds views. Its call is plumbing, not evidence. */
+export const SHOW_VIEW_TOOL = "show_view";
+
 /** Chart forms. A new form is added with its builder, never as a general grammar. */
 export const CHART_TYPES = ["bar", "stacked_bar", "line", "donut"] as const;
 export type ChartType = (typeof CHART_TYPES)[number];

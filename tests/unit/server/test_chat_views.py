@@ -434,11 +434,44 @@ def test_show_view_is_chat_only():
 def test_the_envelope_takes_the_stamped_id_and_keeps_data_unchanged():
     turn = TurnViews()
     stamped = turn.record("get_risk", {}, RISK, artifact_type="risk")
+    artifact_id, data = turn.unstamp(stamped)
     envelope = create_artifact_envelope(
-        tool_name="get_risk", artifact_type="risk", presentation="risk", data=stamped
+        tool_name="get_risk",
+        artifact_type="risk",
+        presentation="risk",
+        data=data,
+        artifact_id=artifact_id,
     )
     assert envelope["id"] == stamped[ARTIFACT_ID_FIELD]
     assert envelope["data"] == RISK
+
+
+def test_a_tools_own_artifact_id_field_is_data_not_an_id():
+    tool_data = {"artifact_id": "a" * 32, "score": 1}
+    turn = TurnViews()
+    # Never recorded: the field is not a stamp.
+    assert turn.unstamp(tool_data) == (None, tool_data)
+    envelope = create_artifact_envelope(
+        tool_name="get_risk", artifact_type="risk", presentation="risk", data=tool_data
+    )
+    assert envelope["id"] != tool_data["artifact_id"]
+    assert envelope["data"] == {"artifact_id": "a" * 32, "score": 1}
+
+    # Recorded: the stamp wins on the model's copy, the stored data keeps the tool's value.
+    stamped = turn.record("get_risk", {}, tool_data, artifact_type="risk")
+    artifact_id, data = turn.unstamp(stamped)
+    assert artifact_id == stamped[ARTIFACT_ID_FIELD] != tool_data["artifact_id"]
+    assert data == {"artifact_id": "a" * 32, "score": 1}
+    # An equal copy that was not the dict handed out is not a stamp either.
+    assert turn.unstamp(dict(stamped)) == (None, dict(stamped))
+
+
+@pytest.mark.parametrize("bad", ["", "x" * 32, "A" * 32, 7, "a" * 31])
+def test_the_envelope_refuses_a_malformed_id(bad):
+    with pytest.raises(ValueError):
+        create_artifact_envelope(
+            tool_name="t", artifact_type="generic", presentation="generic", data={}, artifact_id=bad
+        )
 
 
 # ---------------------------------------------------------------------------

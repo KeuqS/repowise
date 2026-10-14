@@ -227,12 +227,16 @@ class TurnViews:
     """The views of one chat turn and the tool results they may be built from.
 
     ``record`` stamps each tool result with its artifact id before the model
-    sees it; ``show`` is the ``show_view`` tool. ``parts`` holds the validated
-    views in order.
+    sees it; ``unstamp`` gives the stored side the server's id and the tool's
+    own data back. ``show`` is the ``show_view`` tool. ``parts`` holds the
+    validated views in order.
     """
 
     def __init__(self) -> None:
         self._artifacts: dict[str, ViewArtifact] = {}
+        # The exact stamped dicts handed out, so a tool's own ``artifact_id``
+        # field is never mistaken for a stamp.
+        self._stamped: dict[str, dict[str, Any]] = {}
         self.parts: list[dict[str, Any]] = []
 
     def record(
@@ -256,7 +260,16 @@ class TurnViews:
             arguments=dict(arguments),
             data=result,
         )
-        return {**result, ARTIFACT_ID_FIELD: artifact_id}
+        stamped = {**result, ARTIFACT_ID_FIELD: artifact_id}
+        self._stamped[artifact_id] = stamped
+        return stamped
+
+    def unstamp(self, result: dict[str, Any]) -> tuple[str | None, dict[str, Any]]:
+        """The server's id and unstamped data for a ``record`` result; else ``(None, result)``."""
+        artifact_id = result.get(ARTIFACT_ID_FIELD)
+        if isinstance(artifact_id, str) and self._stamped.get(artifact_id) is result:
+            return artifact_id, self._artifacts[artifact_id].data
+        return None, result
 
     def show(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Run ``show_view``: a short receipt on success, an error payload otherwise."""

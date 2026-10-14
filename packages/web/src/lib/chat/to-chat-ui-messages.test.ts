@@ -3,6 +3,28 @@ import type { ChatMessageResponse } from "@/lib/api/types";
 import { toChatUiMessages } from "./to-chat-ui-messages";
 
 describe("toChatUiMessages", () => {
+  it("hides a stored show_view call and tolerates stored views", () => {
+    const stored: ChatMessageResponse[] = [
+      {
+        id: "m1",
+        conversation_id: "c1",
+        role: "assistant",
+        content: {
+          tool_calls: [
+            { id: "t1", name: "get_risk", result: { score: 1 } },
+            { id: "t2", name: "show_view", result: { view_id: "v1" } },
+          ],
+          views: [{ id: "v1", kind: "table" }],
+        },
+        created_at: "2026-10-14T00:00:00Z",
+      },
+    ];
+
+    expect(toChatUiMessages(stored)[0]?.toolCalls.map((call) => call.name)).toEqual([
+      "get_risk",
+    ]);
+  });
+
   it.each([
     ["an errored read", { error: "no git metadata available" }, "error"],
     ["a good read", { score: 8.4 }, "done"],
