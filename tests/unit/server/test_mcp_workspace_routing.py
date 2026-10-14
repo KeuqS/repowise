@@ -210,6 +210,14 @@ async def test_get_risk_pr_mode_keeps_deleted_files_with_their_change(routed_ws)
     assert "error" not in result
 
 
+async def test_get_risk_pr_mode_leaves_a_missing_target_on_the_default_repo(routed_ws):
+    from repowise.server.mcp_server import get_risk
+
+    result = await get_risk(targets=["src/nowhere.py"], changed_files=["src/only_fe.py"])
+    assert result["routes"]["src/nowhere.py"] == {"repo": "backend"}
+    assert result["routes"]["src/only_fe.py"] == {"repo": "frontend"}
+
+
 # -- get_health ---------------------------------------------------------------
 
 

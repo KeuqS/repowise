@@ -464,7 +464,7 @@ async def get_risk(
         else None
     )
     if routes is not None and changed_files:
-        routes = settle_missing(routes)
+        routes = settle_missing(routes, set(changed_files))
     if needs_routing(routes):
         alias = single_repo(routes)
         if alias is None:

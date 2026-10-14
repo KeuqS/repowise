@@ -28,7 +28,7 @@ locator replaces the probe when the workspace store lands.
 from __future__ import annotations
 
 import os
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -118,11 +118,12 @@ def one_repo_refusal(tool: str, routes: list[Route]) -> dict[str, Any]:
     }
 
 
-def settle_missing(routes: list[Route]) -> list[Route]:
-    """Serve paths no checkout has from the batch's one repo, else the default.
+def settle_missing(routes: list[Route], changed: Collection[str]) -> list[Route]:
+    """Serve ``changed`` paths no checkout has from the batch's one repo, else the default.
 
     A change set names deleted files, so for ``changed_files`` absence is not a
-    typo; the tool's own history reading answers for them as before.
+    typo; the tool's own history reading answers for them as before. Other
+    missing targets keep the default-repo not-found path and its hint.
     """
     registry = _state._registry
     if registry is None:
@@ -131,7 +132,9 @@ def settle_missing(routes: list[Route]) -> list[Route]:
     repos = {r.repo for r in routes if r.repo is not None and not r.missed}
     home = next(iter(repos)) if len(repos) == 1 else default
     return [
-        replace(r, repo=home, routed=home != default, missed=False) if r.missed else r
+        replace(r, repo=home, routed=home != default, missed=False)
+        if r.missed and r.target in changed
+        else r
         for r in routes
     ]
 
