@@ -43,6 +43,7 @@ from repowise.server.mcp_server._test_selection import (
     select_change_tests,
 )
 from repowise.server.mcp_server._workspace_routing import (
+    hint_misses,
     needs_routing,
     one_repo_refusal,
     rekey_targets,
@@ -476,7 +477,9 @@ async def get_risk(
             include=include,
         )
         rekey_targets(routed, routes)
-        routed["repo"] = alias
+        if any(r.routed for r in routes):
+            routed["repo"] = alias
+        hint_misses(routed, routes)
         return routed
     ignored: list[dict] = []
     include_set = {

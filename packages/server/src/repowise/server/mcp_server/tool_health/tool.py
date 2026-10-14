@@ -31,6 +31,7 @@ from repowise.server.mcp_server._helpers import (
 )
 from repowise.server.mcp_server._meta import build_meta as _build_meta
 from repowise.server.mcp_server._workspace_routing import (
+    hint_misses,
     needs_routing,
     one_repo_refusal,
     route_targets,
@@ -274,7 +275,9 @@ async def get_health(
         # Server-side wall clock, as ``get_context`` reports.
         result["_meta"]["timing_ms"] = round((perf_counter() - started) * 1000, 2)
         if routed_repo is not None:
-            result["repo"] = routed_repo
+            if any(r.routed for r in routes):
+                result["repo"] = routed_repo
+            hint_misses(result, routes)
         return result
 
 

@@ -13,9 +13,10 @@ Rules, exact matches only:
   the default repo when it exists there, as before. Otherwise it is routed to
   the one other repo whose checkout has it; when several do, the candidates
   are returned and nothing is guessed.
-- A path on disk in no repo is refused with a message naming the call that
-  finds it, except in a change set, where it is a deleted file
-  (:func:`settle_missing`).
+- A path in no repo falls through to the default repo, whose own not-found
+  answer (suggestions, ``moved_to``) is kept; :func:`hint_misses` only adds a
+  pointer to ``search_codebase``. In a change set it is a deleted file and
+  gets no hint (:func:`settle_missing`).
 - Bare names and opaque refs stay with the default repo: resolving them
   elsewhere needs a workspace-wide symbol locator.
 
@@ -47,21 +48,16 @@ class Route:
     repo: str | None  # owning alias; None when unresolved
     routed: bool = False  # True when the repo came from a prefix or a lookup
     candidates: tuple[str, ...] = ()  # set when several repos have the path
+    missed: bool = False  # no repo has the path; served by the default repo
 
     @property
     def refusal(self) -> str | None:
-        if self.repo is not None:
+        if self.repo is not None or not self.candidates:
             return None
-        if self.candidates:
-            listed = ", ".join(self.candidates)
-            return (
-                f"'{self.target}' exists in several workspace repos ({listed}). "
-                f"Name one: '{self.candidates[0]}:{self.local}', or pass repo=."
-            )
+        listed = ", ".join(self.candidates)
         return (
-            f"'{self.target}' is not in any workspace repo. Find it with "
-            f"search_codebase(query=..., repo=\"all\"), then pass it as "
-            f"'<repo>:<path>'. Repos: {', '.join(_repo_roots())}."
+            f"'{self.target}' exists in several workspace repos ({listed}). "
+            f"Name one: '{self.candidates[0]}:{self.local}', or pass repo=."
         )
 
     def card(self) -> dict[str, Any]:
@@ -87,8 +83,8 @@ def route_targets(targets: Sequence[str], *, paths_only: bool = False) -> list[R
 
 
 def needs_routing(routes: list[Route] | None) -> bool:
-    """True when any target leaves the default repo's plain path."""
-    return routes is not None and any(r.routed or r.repo is None for r in routes)
+    """True when any target needs more than the default repo's plain path."""
+    return routes is not None and any(r.routed or r.missed or r.repo is None for r in routes)
 
 
 def single_repo(routes: list[Route]) -> str | None:
@@ -132,14 +128,37 @@ def settle_missing(routes: list[Route]) -> list[Route]:
     if registry is None:
         return routes
     default = registry.get_default_alias()
-    repos = {r.repo for r in routes if r.repo is not None}
+    repos = {r.repo for r in routes if r.repo is not None and not r.missed}
     home = next(iter(repos)) if len(repos) == 1 else default
     return [
-        replace(r, repo=home, routed=home != default)
-        if r.repo is None and not r.candidates
-        else r
+        replace(r, repo=home, routed=home != default, missed=False) if r.missed else r
         for r in routes
     ]
+
+
+_MISS_HINT = (
+    'Not in any workspace repo. Find it with search_codebase(query=..., repo="all"), '
+    "then pass '<alias>:<path>'."
+)
+
+
+def hint_misses(response: dict[str, Any], routes: list[Route]) -> None:
+    """Add the search hint to a not-found answer for each target no repo has."""
+    missed = {r.target for r in routes if r.missed}
+    if not missed:
+        return
+    cards = response.get("targets")
+    if isinstance(cards, dict):
+        for key, card in cards.items():
+            if key in missed and isinstance(card, dict) and (
+                card.get("error") or card.get("unresolved_reason")
+            ):
+                card["hint"] = _MISS_HINT
+    for item in response.get("unresolved") or ():
+        if isinstance(item, dict) and item.get("target") in missed:
+            item["hint"] = _MISS_HINT
+    if response.get("error") and not isinstance(cards, dict):
+        response["hint"] = _MISS_HINT
 
 
 def rekey_targets(response: dict[str, Any], routes: list[Route]) -> None:
@@ -185,7 +204,9 @@ async def run_grouped(
             card = {"error": result.get("error") or f"No result for '{r.local}'"}
         cards[r.target] = {"repo": r.repo, **card} if r.routed else card
     merged.setdefault("_meta", {})
-    return {"targets": cards, **merged}
+    response = {"targets": cards, **merged}
+    hint_misses(response, routes)
+    return response
 
 
 # -- internals ---------------------------------------------------------------
@@ -218,7 +239,9 @@ def _route_one(target: str, roots: dict[str, Path], default: str, paths_only: bo
     owners = tuple(a for a, root in roots.items() if a != default and _exists(root, file_part))
     if len(owners) == 1:
         return Route(target, target, owners[0], routed=True)
-    return Route(target, target, None, candidates=owners if len(owners) > 1 else ())
+    if len(owners) > 1:
+        return Route(target, target, None, candidates=owners)
+    return Route(target, target, default, missed=True)
 
 
 def _route_absolute(target: str, file_part: str, roots: dict[str, Path], default: str) -> Route:
@@ -232,7 +255,7 @@ def _route_absolute(target: str, file_part: str, roots: dict[str, Path], default
             return Route(target, target, default)
         local = path.relative_to(root).as_posix() + target[len(file_part) :]
         return Route(target, local, alias, routed=True)
-    return Route(target, target, None)
+    return Route(target, target, default, missed=True)
 
 
 def _split_prefix(target: str, roots: dict[str, Path]) -> tuple[str | None, str]:

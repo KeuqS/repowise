@@ -527,7 +527,7 @@ Only four tools answer across every repo with `repo="all"`. The rest return an e
 | `get_conformance` | No `"all"` value; it covers the whole workspace when `repo` is omitted |
 | `get_blast_radius`, `get_architecture`, `list_repos` | No `repo` parameter; they always read the whole workspace |
 
-With `repo` omitted, `get_context`, `get_symbol`, `get_risk` and `get_health` route each path or `path::Name` target to its repo: the default repo when the file exists there, else the one other repo whose checkout has it. Write `<alias>:<target>` (for example `web:src/app.ts::App`) to name the repo outright. A path found in several other repos returns its `candidates`, and a path in no repo is refused with a pointer to `search_codebase(repo="all")`; routed results carry `repo`. `get_context` takes a batch spanning repos, while `get_risk` and `get_health` answer one repo per call and name the per-repo calls when a batch spans several.
+With `repo` omitted, `get_context`, `get_symbol`, `get_risk` and `get_health` route each path or `path::Name` target to its repo: the default repo when the file exists there, else the one other repo whose checkout has it. Write `<alias>:<target>` (for example `web:src/app.ts::App`) to name the repo outright. A path found in several other repos returns its `candidates`. A path in no repo gets the default repo's usual not-found answer plus a `hint` naming `search_codebase(repo="all")` and the `<alias>:<path>` form; routed results carry `repo`. `get_context` takes a batch spanning repos, while `get_risk` and `get_health` answer one repo per call and name the per-repo calls when a batch spans several.
 
 Single-repo tools also gain cross-repo evidence in workspace mode:
 

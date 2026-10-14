@@ -69,8 +69,8 @@ async def test_router_rules(routed_ws):
     assert (prefixed.repo, prefixed.local) == ("frontend", "src/probe.py::frontend_probe")
     assert routes["src/shared.py"].repo is None
     assert routes["src/shared.py"].candidates == ("frontend", "docs")
-    assert routes["src/nowhere.py"].repo is None
-    assert not routes["src/nowhere.py"].candidates
+    assert routes["src/nowhere.py"].repo == "backend"
+    assert routes["src/nowhere.py"].missed
     # Target kinds and bare names never leave the default repo.
     assert routes["module:src"] == Route("module:src", "module:src", "backend")
     assert routes["backend_probe"] == Route("backend_probe", "backend_probe", "backend")
@@ -80,7 +80,7 @@ async def test_router_rules(routed_ws):
 
 async def test_router_never_lets_a_path_escape_its_repo(routed_ws):
     (route,) = route_targets(["../web-client/src/only_fe.py"])
-    assert route.repo is None
+    assert (route.repo, route.missed) == ("backend", True)
 
 
 # -- get_context --------------------------------------------------------------
@@ -117,8 +117,18 @@ async def test_get_context_routes_a_mixed_batch(routed_ws):
     assert cards["src/only_fe.py"]["repo"] == "frontend"
     assert cards["src/shared.py"]["candidates"] == ["frontend", "docs"]
     assert "frontend:src/shared.py" in cards["src/shared.py"]["error"]
-    assert 'search_codebase(query=..., repo="all")' in cards["src/nowhere.py"]["error"]
+    assert "Target not found" in cards["src/nowhere.py"]["error"]
+    assert 'search_codebase(query=..., repo="all")' in cards["src/nowhere.py"]["hint"]
     assert "_meta" in result
+
+
+async def test_get_context_miss_keeps_the_default_repo_answer(routed_ws):
+    from repowise.server.mcp_server import get_context
+
+    plain = (await get_context(targets=["src/nowhere.py"], repo="backend"))["targets"]
+    hinted = (await get_context(targets=["src/nowhere.py"]))["targets"]
+    assert hinted["src/nowhere.py"].pop("hint")
+    assert hinted == plain
 
 
 # -- get_symbol ---------------------------------------------------------------
@@ -155,8 +165,9 @@ async def test_get_symbol_refuses_ambiguous_and_unknown(routed_ws):
     ambiguous = await get_symbol("src/shared.py::shared")
     assert ambiguous["candidates"] == ["frontend", "docs"]
     unknown = await get_symbol("src/nowhere.py::x")
-    assert 'search_codebase(query=..., repo="all")' in unknown["error"]
-    assert "'<repo>:<path>'" in unknown["error"]
+    assert "error" in unknown
+    assert 'search_codebase(query=..., repo="all")' in unknown["hint"]
+    assert "repo" not in unknown
 
 
 # -- get_risk -----------------------------------------------------------------
@@ -187,7 +198,8 @@ async def test_get_risk_refuses_ambiguous_and_unknown(routed_ws):
     ambiguous = await get_risk(targets=["src/shared.py"])
     assert ambiguous["routes"]["src/shared.py"] == {"candidates": ["frontend", "docs"]}
     unknown = await get_risk(targets=["src/nowhere.py"])
-    assert 'search_codebase(query=..., repo="all")' in unknown["error"]
+    assert "repo" not in unknown
+    assert 'search_codebase(query=..., repo="all")' in unknown["targets"]["src/nowhere.py"]["hint"]
 
 
 async def test_get_risk_pr_mode_keeps_deleted_files_with_their_change(routed_ws):
@@ -218,7 +230,7 @@ async def test_get_health_default_repo_unchanged(routed_ws):
     assert "backend_probe_health" in json.dumps(result)
 
 
-async def test_get_health_refuses_cross_repo_ambiguous_and_unknown(routed_ws):
+async def test_get_health_refuses_cross_repo_and_ambiguous_hints_unknown(routed_ws):
     from repowise.server.mcp_server import get_health
 
     mixed = await get_health(targets=["src/probe.py", "src/only_fe.py"])
@@ -226,4 +238,5 @@ async def test_get_health_refuses_cross_repo_ambiguous_and_unknown(routed_ws):
     ambiguous = await get_health(targets=["src/shared.py"])
     assert ambiguous["routes"]["src/shared.py"] == {"candidates": ["frontend", "docs"]}
     unknown = await get_health(targets=["src/nowhere.py"])
-    assert 'search_codebase(query=..., repo="all")' in unknown["error"]
+    assert "repo" not in unknown
+    assert "search_codebase" in unknown["unresolved"][0]["hint"]
