@@ -716,6 +716,21 @@ class TestSymbolTestPenalty:
         assert self._score("spec/openapi/users.py", language="python") == base
 
 
+def test_symbol_coverage_folds_plurals_on_both_sides():
+    from repowise.core.persistence.models import WikiSymbol
+    from repowise.server.mcp_server.tool_search_symbols import _score_symbol, _tokens
+
+    def score(name: str, query: str) -> float:
+        row = WikiSymbol(name=name, qualified_name=name, file_path="src/a.py", language="python")
+        return _score_symbol(row, None, _tokens(query), query.lower())
+
+    # Every query word is covered once ``type`` meets ``types``, either way round.
+    full = score("declared_types_in", "declared types in")
+    assert score("declared_types_in", "declared type in") == full
+    assert score("parseHeader", "parse headers") == score("parseHeader", "parse header")
+    assert score("declared_types_in", "declared kind in") < full
+
+
 class TestSymbolSearch:
     """mode="symbol" / "auto" routing into the structural index (issue #484)."""
 

@@ -98,6 +98,34 @@ class TestNameAtLine:
     def test_qualified_name_uses_bare_segment(self) -> None:
         assert name_at_line(FRESH_SOURCE.splitlines(), "Service::handle", 9)
 
+    def test_annotation_block_is_read_past(self) -> None:
+        java = [
+            "  @Deprecated",
+            "  @InlineMe(",
+            '      replacement = "this.other()",',
+            '      imports = "a.B")',
+            "  public Builder setLenient() {",
+        ]
+        assert name_at_line(java, "setLenient", 1)
+        assert name_at_line(["#[test]", "fn parses() {}"], "parses", 1)
+        assert name_at_line(["LRESULT", "Window::MessageHandler(HWND h) {"], "MessageHandler", 1)
+        # Code above the definition is not an annotation, so a shift still fails.
+        assert not name_at_line(["  int x = 1;", "  @Override", "  void run() {"], "run", 1)
+
+    @pytest.mark.parametrize(
+        "head",
+        ["pass", "return", "x", "int x"],
+    )
+    def test_a_statement_line_is_not_a_type_head(self, head: str) -> None:
+        # A shift that lands one line above a definition must still fail.
+        assert not name_at_line([head, "def foo_bar():"], "foo_bar", 1)
+        assert not name_at_line([head, "    foo_bar()"], "foo_bar", 1)
+
+    def test_type_heads_read_past_at_most_two_lines(self) -> None:
+        cpp = ["template <typename T>", "static int", "Grow(T x) {"]
+        assert name_at_line(cpp, "Grow", 1)
+        assert not name_at_line(["LRESULT", "LRESULT", "LRESULT", "Run() {"], "Run", 1)
+
 
 class TestCheckSymbolBounds:
     def test_fresh_bounds_verified_without_reparse(self) -> None:

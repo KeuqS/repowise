@@ -84,6 +84,11 @@ def _tokens(text: str | None) -> set[str]:
     return out
 
 
+def _stem(word: str) -> str:
+    """``files`` -> ``file``: enough inflection folding to match prose to names."""
+    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
+
+
 def _score_symbol(row: WikiSymbol, gnode: GraphNode | None, qtokens: set[str], qnorm: str) -> float:
     """Rank a candidate symbol against the query (higher = better).
 
@@ -94,7 +99,9 @@ def _score_symbol(row: WikiSymbol, gnode: GraphNode | None, qtokens: set[str], q
     """
     name = (row.name or "").lower()
     qn = _qual_norm(row.qualified_name)
-    stoks = _tokens(row.name) | _tokens(row.qualified_name)
+    # Plurals folded on both sides, so ``type`` covers ``declared_types_in``.
+    stoks = {_stem(t) for t in _tokens(row.name) | _tokens(row.qualified_name)}
+    folded = {_stem(t) for t in qtokens}
 
     score = 0.0
     # Exact match on the bare name or the (separator-normalised) qualified name.
@@ -105,10 +112,10 @@ def _score_symbol(row: WikiSymbol, gnode: GraphNode | None, qtokens: set[str], q
     if name and name in qtokens:
         score += 40.0
     # Token coverage: how much of the query the symbol's tokens account for.
-    if qtokens:
-        matched = qtokens & stoks
-        score += 30.0 * (len(matched) / len(qtokens))
-        if qtokens <= stoks:  # every query token is present
+    if folded:
+        matched = folded & stoks
+        score += 30.0 * (len(matched) / len(folded))
+        if folded <= stoks:  # every query token is present
             score += 20.0
     # Substring fallback for partial identifiers ("index_re").
     if qnorm and (qnorm in name or qnorm in qn):
@@ -168,7 +175,8 @@ def _candidate_filter(qtokens: set[str], qnorm: str):
             WikiSymbol.qualified_name.ilike(f"%{escape_like(qnorm)}%", escape=LIKE_ESCAPE)
         )
     for tok in qtokens:
-        esc = escape_like(tok)
+        # The folded token is a prefix of the word, so ``types`` still finds ``type``.
+        esc = escape_like(_stem(tok))
         clauses.append(WikiSymbol.name.ilike(f"%{esc}%", escape=LIKE_ESCAPE))
         clauses.append(WikiSymbol.qualified_name.ilike(f"%{esc}%", escape=LIKE_ESCAPE))
     return or_(*clauses) if clauses else None

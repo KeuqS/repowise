@@ -31,6 +31,7 @@ Verification is two-tier:
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -46,6 +47,30 @@ _log = logging.getLogger("repowise.mcp.verify")
 # confirm them. (Module-level constants/variables now indexed make short
 # names common, so the gate must not rubber-stamp them.)
 _MIN_GATE_NAME_LEN = 3
+# A line opening an annotation, attribute or decorator, which JVM, Swift, Rust
+# and C# definitions can start on. Lines inside its brackets continue it.
+_ATTRIBUTE_LINE = re.compile(r"^\s*(?:@|#\[|\[)")
+# A C/C++ return-type or template line above the name (``LRESULT``,
+# ``static int``, ``template <typename T>``): one type-like token, at most one
+# qualifier before it. A bare statement keyword is not a type.
+_TYPE_HEAD = re.compile(
+    r"^\s*(?:(?:static|inline|extern|virtual|constexpr|const|unsigned|signed|friend|explicit)\s+)?"
+    r"(template\s*<.*>|[A-Za-z_][\w:]*(?:<.*>)?)[\s*&]*$"
+)
+# Control-flow and statement words: a line led by one is not a definition or
+# its type head.
+NOT_A_DEFINITION = frozenset(
+    {
+        "if", "for", "while", "switch", "catch", "else", "do", "try", "return",
+        "with", "using", "lock", "foreach", "case", "synchronized", "await",
+        "yield", "new", "typeof", "in", "of", "when", "unless", "match",
+        "raise", "throw", "assert", "del", "delete", "print", "elif", "except",
+        "finally", "import", "from", "global", "nonlocal", "pass", "break",
+        "continue", "go", "defer", "select", "range", "constructor", "end",
+    }
+)
+_MAX_TYPE_HEAD_LINES = 2
+_MAX_ATTRIBUTE_LINES = 20
 
 
 @dataclass
@@ -65,12 +90,34 @@ def name_at_line(lines: list[str], name: str, start_line: int) -> bool:
     ``lines`` is the live file split into lines; ``start_line`` is
     1-indexed. The bare name (last segment of a qualified name) must appear
     as a substring of the definition line — true for def/class/assignment
-    lines across every indexed language.
+    lines across every indexed language. A recorded start on an annotation
+    block (``@Override``, ``#[test]``, ``[Fact]``, one spanning lines) or a
+    return-type line (``LRESULT``) is read past to the line it heads.
     """
     if start_line < 1 or start_line > len(lines):
         return False
     bare = _bare_name(name)
-    return bool(bare) and bare in lines[start_line - 1]
+    if not bare:
+        return False
+    depth = heads = 0
+    for text in lines[start_line - 1 : start_line - 1 + _MAX_ATTRIBUTE_LINES]:
+        if bare in text:
+            return True
+        if depth or _ATTRIBUTE_LINE.match(text):
+            depth = max(0, depth + sum(map(text.count, "([{")) - sum(map(text.count, ")]}")))
+        elif heads < _MAX_TYPE_HEAD_LINES and _is_type_head(text):
+            heads += 1
+        else:
+            return False
+    return False
+
+
+def _is_type_head(text: str) -> bool:
+    m = _TYPE_HEAD.match(text)
+    if m is None:
+        return False
+    token = m.group(1)
+    return token.startswith("template") or (len(token) >= 3 and token not in NOT_A_DEFINITION)
 
 
 def _bare_name(name: str) -> str:
