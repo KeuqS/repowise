@@ -68,6 +68,11 @@ from repowise.server.mcp_server._helpers import (
 )
 from repowise.server.mcp_server._meta import build_meta as _build_meta
 from repowise.server.mcp_server._meta import completeness_line as _completeness_line
+from repowise.server.mcp_server._workspace_routing import (
+    needs_routing,
+    route_targets,
+    run_grouped,
+)
 from repowise.server.mcp_server.tool_context.enrichment import attach_doc_references
 from repowise.server.mcp_server.tool_context.targets import _resolve_one_target
 
@@ -149,6 +154,12 @@ async def get_context(
     """
     if repo == "all":
         return _unsupported_repo_all("get_context")
+    routes = route_targets(targets) if repo is None else None
+    if needs_routing(routes):
+        return await run_grouped(
+            routes,
+            lambda alias, local: get_context(local, include=include, compact=compact, repo=alias),
+        )
     ctx = await _resolve_repo_context(repo)
     collector = OmissionCollector("get_context", repo_root=ctx.path)
 

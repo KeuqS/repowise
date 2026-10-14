@@ -90,6 +90,7 @@ from repowise.server.mcp_server._verify import (
     heal_symbol_row,
     parse_live_symbols,
 )
+from repowise.server.mcp_server._workspace_routing import needs_routing, route_targets
 
 _log = __import__("logging").getLogger("repowise.mcp.symbol")
 
@@ -1053,6 +1054,16 @@ async def get_symbol(
         return _resolve_omission_ref(
             canonical_omission, omission_ref, query, ctx.path, t0
         )
+
+    routes = route_targets([symbol_id.strip()]) if repo is None else None
+    if needs_routing(routes):
+        route = routes[0]
+        if route.repo is None:
+            return {"symbol_id": symbol_id, **route.card(), "_meta": _build_meta()}
+        routed = await get_symbol(
+            route.local, context_lines=context_lines, repo=route.repo, query=query, depth=depth
+        )
+        return {"repo": route.repo, **routed}
 
     # Range read: "path/to/file.py:140-180" (single colon + numeric range —
     # never collides with "{path}::{name}").

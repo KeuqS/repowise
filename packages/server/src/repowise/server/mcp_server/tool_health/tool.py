@@ -30,6 +30,12 @@ from repowise.server.mcp_server._helpers import (
     _unsupported_repo_all,
 )
 from repowise.server.mcp_server._meta import build_meta as _build_meta
+from repowise.server.mcp_server._workspace_routing import (
+    needs_routing,
+    one_repo_refusal,
+    route_targets,
+    single_repo,
+)
 from repowise.server.mcp_server.tool_health.analysis_meta import (
     _attach_health_analysis_meta,
     _attach_repository_analysis_meta,
@@ -185,6 +191,13 @@ async def get_health(
     )
     if conflict is not None:
         return _note_inapplicable_controls(conflict, scope, counts)
+    routes = route_targets(targets, paths_only=True) if repo is None and targets else None
+    routed_repo = None
+    if needs_routing(routes):
+        routed_repo = single_repo(routes)
+        if routed_repo is None:
+            return {**one_repo_refusal("get_health", routes), "_meta": _build_meta()}
+        targets, repo = [r.local for r in routes], routed_repo
     req = HealthRequest(
         targets=targets,
         include=include,
@@ -260,6 +273,8 @@ async def get_health(
         _attach_semantics(result, req)
         # Server-side wall clock, as ``get_context`` reports.
         result["_meta"]["timing_ms"] = round((perf_counter() - started) * 1000, 2)
+        if routed_repo is not None:
+            result["repo"] = routed_repo
         return result
 
 
