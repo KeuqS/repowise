@@ -8,6 +8,10 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 ARTIFACT_ENVELOPE_VERSION = 1
 
+#: Key a chat turn stamps on a tool result so the model can name it in
+#: ``show_view``; the envelope takes it as its id and drops it from ``data``.
+ARTIFACT_ID_FIELD = "artifact_id"
+
 _LEGACY_ARTIFACT_TYPE_BY_TOOL = {
     "get_overview": "overview",
     "get_context": "context",
@@ -90,8 +94,11 @@ def create_artifact_envelope(
     evidence_basis: str = "unknown",
 ) -> dict[str, Any]:
     """Create the one durable payload stored for a completed tool call."""
+    stamped = data.get(ARTIFACT_ID_FIELD)
+    if stamped is not None:
+        data = {key: value for key, value in data.items() if key != ARTIFACT_ID_FIELD}
     return {
-        "id": artifact_id or uuid4().hex,
+        "id": artifact_id or stamped or uuid4().hex,
         "version": ARTIFACT_ENVELOPE_VERSION,
         "type": artifact_type,
         "tool_name": tool_name,

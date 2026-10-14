@@ -12,6 +12,7 @@ import type { Hotspot } from "./git.js";
 import type { DeadCodeFinding } from "./dead-code.js";
 import type { DecisionRecord } from "./decisions.js";
 import type { EvidenceCard } from "./cards.js";
+import type { ViewPart } from "./views.js";
 
 // ---------------------------------------------------------------------------
 // Product context surrounding a chat composer
@@ -127,6 +128,8 @@ export interface ChatMessage {
     follow_ups?: ChatSuggestion[];
     /** Evidence cards for this turn, unvalidated until parsed. */
     cards?: unknown[];
+    /** View parts `show_view` built this turn, unvalidated until parsed. */
+    views?: unknown[];
   };
   created_at: string;
 }
@@ -692,6 +695,9 @@ export type ChatSSEEvent =
       artifact: ChatArtifact;
       citations?: ChatCitation[];
     }
+  /** A table or chart the server built from a tool result of this turn,
+   *  sent right after the `show_view` call's `tool_result`. */
+  | { type: "view"; tool_id: string; view: ViewPart }
   /** Every turn ended in a tool call; `done` still follows. */
   | { type: "truncated"; loops: number }
   /** Next steps for the turn that just finished, sent just before `done`.
