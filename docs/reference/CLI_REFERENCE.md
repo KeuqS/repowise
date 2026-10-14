@@ -38,7 +38,8 @@ Grouped by what you're trying to do, not alphabetically. `PATH` and flag details
 [`security`](#repowise-security) ·
 [`impacted-tests`](#repowise-impacted-tests-revspec) ·
 [`coverage`](#repowise-coverage) ·
-[`components`](#repowise-components)
+[`components`](#repowise-components) ·
+[`changes`](#repowise-changes)
 
 **Decisions**
 [`decision`](#repowise-decision)
@@ -1587,6 +1588,17 @@ repowise coverage suggest-gates --format json
 ```bash
 repowise components check [--path PATH] [--format table|json]
 repowise components list [--path PATH] [--format table|json]
+```
+
+---
+
+### `repowise changes`
+
+Merged changes read back from git at each index and update: one per first-parent commit, identified by the PR or MR number its message names, then a Gerrit `Change-Id`, then the merge or commit sha. A merge lands the commits its branch brought in, and rebase merges read as one change per commit. `show` takes an id (`pr-123`) or any commit sha the change landed, and prints the versioned JSON record or, with `--format in-toto`, an in-toto Statement v1 whose subjects are the commits.
+
+```bash
+repowise changes list [--path PATH] [--category C] [--shape merge|squash|commit] [--grep TEXT] [--limit N] [--offset N] [--format table|json]
+repowise changes show REF [--path PATH] [--format table|json|in-toto]
 ```
 
 ---

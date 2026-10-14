@@ -367,6 +367,11 @@ export interface CallersCalleesResponse {
   relations?: SymbolRelationGroup[];
 }
 
+export interface ChangeAuthor {
+  name: string;
+  email: string;
+}
+
 /** The Kamei change-shape features the risk model scores. */
 export interface ChangeFeaturesResponse {
   la: number;
@@ -376,6 +381,85 @@ export interface ChangeFeaturesResponse {
   ns: number;
   entropy: number;
   exp: number | null;
+}
+
+export interface ChangeFile {
+  path: string;
+  added: number;
+  deleted: number;
+}
+
+/** Forge facts from a metadata source; ``None`` means unknown. */
+export interface ChangeForgeMetadata {
+  source?: string | null;
+  reviewers?: string[] | null;
+  approvals?: number | null;
+  labels?: string[] | null;
+  linked_issues?: string[] | null;
+}
+
+/** ``pr`` | ``change_id`` | ``merge`` | ``commit``, first that applies. */
+export interface ChangeIdentity {
+  kind: string;
+  value: string;
+}
+
+export interface ChangeListResponse {
+  items: ChangeSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+  attribution: boolean;
+}
+
+/** Three-state AI provenance over the change's commits, with its coverage. */
+export interface ChangeProvenance {
+  label: string;
+  agent_commits: number;
+  human_attested_commits: number;
+  unknown_commits: number;
+  coverage?: number | null;
+}
+
+export interface ChangeRecord {
+  schema_version: number;
+  id: string;
+  identity: ChangeIdentity;
+  shape: string;
+  forge: string;
+  forge_ref?: string | null;
+  title: string;
+  merged_at?: string | null;
+  head_sha: string;
+  author: ChangeAuthor;
+  commit_count: number;
+  files_changed: number;
+  lines_added: number;
+  lines_deleted: number;
+  category: string;
+  provenance?: ChangeProvenance | null;
+  commits: string[];
+  files: ChangeFile[];
+  metadata: ChangeForgeMetadata;
+}
+
+export interface ChangeSummary {
+  schema_version: number;
+  id: string;
+  identity: ChangeIdentity;
+  shape: string;
+  forge: string;
+  forge_ref?: string | null;
+  title: string;
+  merged_at?: string | null;
+  head_sha: string;
+  author: ChangeAuthor;
+  commit_count: number;
+  files_changed: number;
+  lines_added: number;
+  lines_deleted: number;
+  category: string;
+  provenance?: ChangeProvenance | null;
 }
 
 export interface ChangelogEntryModel {

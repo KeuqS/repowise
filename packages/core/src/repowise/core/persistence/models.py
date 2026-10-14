@@ -801,6 +801,71 @@ class GitCommit(Base):
     # local channel carries a model); NULL for human or non-trace commits.
     agent_model_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     attribution: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # One EVOLUTION_CATEGORIES label from the subject; NULL on rows written
+    # before it was stored. Update re-labels rows the classifier now reads
+    # differently, so the column follows the classifier.
+    category: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now_utc
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now_utc, onupdate=_now_utc
+    )
+
+
+class Change(Base):
+    """One merged change (a PR, MR, Gerrit change or lone commit) on the main line.
+
+    Reconstructed from git alone by :mod:`repowise.core.changes`: each
+    first-parent commit of HEAD is one change; a merge commit's change also
+    holds the commits its other parents brought in. ``change_id`` is the stable
+    public id (``pr-123``, ``change-I…``, ``merge-<sha>``, ``commit-<sha>``).
+    Forge metadata columns stay NULL (unknown) unless a metadata source filled
+    them; ``metadata_source`` names it. Provenance columns are NULL while AI
+    attribution is switched off.
+    """
+
+    __tablename__ = "changes"
+    __table_args__ = (
+        UniqueConstraint("repository_id", "change_id", name="uq_change"),
+        Index("ix_changes_repo_merged", "repository_id", "merged_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_uuid)
+    repository_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    change_id: Mapped[str] = mapped_column(String(96), nullable=False)
+    identity_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    identity_value: Mapped[str] = mapped_column(String(64), nullable=False)
+    # merge | squash | commit: how the change was read off the main line.
+    shape: Mapped[str] = mapped_column(String(16), nullable=False)
+    forge: Mapped[str] = mapped_column(String(16), nullable=False, default="generic")
+    forge_ref: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    head_sha: Mapped[str] = mapped_column(String(40), nullable=False)
+    author_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    author_email: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    commit_shas_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    # [{"path", "added", "deleted"}] against the first parent; ``files_changed``
+    # is the full count when the stored list is capped.
+    files_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    files_changed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lines_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lines_deleted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    category: Mapped[str] = mapped_column(String(16), nullable=False, default="other")
+    # agent | human_attested | unknown over the change's commits, with the
+    # counts behind it (coverage = known / commits).
+    provenance: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    provenance_agent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provenance_known: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    reviewers_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approvals: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    labels_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linked_issues_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now_utc
