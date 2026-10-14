@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -34,6 +35,8 @@ from repowise.server.schemas.views import (
     ViewPart,
     ViewPartList,
 )
+
+logger = logging.getLogger(__name__)
 
 SHOW_VIEW_TOOL = "show_view"
 ATTRIBUTION_COVERAGE_FLOOR = 0.30
@@ -255,6 +258,10 @@ class TurnViews:
             part = self._build(arguments)
         except ViewError as exc:
             return exc.payload()
+        except Exception:
+            # A builder bug (or a plugin's) is the model's error to see, not the turn's end.
+            logger.exception("chat_view_builder_failed", extra={"view": arguments.get("view")})
+            return ViewError("the view builder failed", code="builder_failed").payload()
         self.parts.append(part)
         receipt = {"view_id": part["id"], "kind": part["kind"], "title": part["title"]}
         if "summary" in part:

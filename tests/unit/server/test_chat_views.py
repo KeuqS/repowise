@@ -393,6 +393,19 @@ def test_show_view_errors_reach_the_model(arguments, code):
     assert turn.parts == []
 
 
+def test_a_builder_that_raises_is_an_error_the_model_sees():
+    register_view_builder("test.broken", description="raises", options=frozenset())(
+        lambda artifact, options: {}["missing"]
+    )
+    try:
+        turn = TurnViews()
+        stamped = turn.record("get_x", {}, {"ok": 1})
+        result = turn.show({"artifact_id": stamped[ARTIFACT_ID_FIELD], "view": "test.broken"})
+    finally:
+        view_builders._impls.pop("test.broken")
+    assert result["error_code"] == "builder_failed"
+
+
 def test_a_failed_tool_result_is_not_viewable():
     turn = TurnViews()
     stamped = turn.record("get_health", {}, {"error": "boom"}, artifact_type="health")
