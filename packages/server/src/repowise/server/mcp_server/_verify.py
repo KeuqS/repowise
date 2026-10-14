@@ -66,9 +66,12 @@ NOT_A_DEFINITION = frozenset(
         "yield", "new", "typeof", "in", "of", "when", "unless", "match",
         "raise", "throw", "assert", "del", "delete", "print", "elif", "except",
         "finally", "import", "from", "global", "nonlocal", "pass", "break",
-        "continue", "go", "defer", "select", "range", "constructor", "end",
+        "continue", "go", "defer", "select", "range", "constructor",
     }
 )
+# ``end`` closes a Ruby or Lua block, but it is a real JS method name, so only
+# the type-head check refuses it.
+_NOT_A_TYPE_HEAD = NOT_A_DEFINITION | {"end"}
 _MAX_TYPE_HEAD_LINES = 2
 _MAX_ATTRIBUTE_LINES = 20
 
@@ -117,7 +120,7 @@ def _is_type_head(text: str) -> bool:
     if m is None:
         return False
     token = m.group(1)
-    return token.startswith("template") or (len(token) >= 3 and token not in NOT_A_DEFINITION)
+    return token.startswith("template") or (len(token) >= 3 and token not in _NOT_A_TYPE_HEAD)
 
 
 def _bare_name(name: str) -> str:
