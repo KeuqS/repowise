@@ -104,15 +104,51 @@ def name_at_line(lines: list[str], name: str, start_line: int) -> bool:
         return False
     depth = heads = 0
     for text in lines[start_line - 1 : start_line - 1 + _MAX_ATTRIBUTE_LINES]:
-        if bare in text:
+        # An annotation's arguments can name anything (``@Deprecated(since="foo")``),
+        # so only the code after it on the line counts.
+        if depth:
+            depth = _depth_after(depth, text)
+        elif _ATTRIBUTE_LINE.match(text):
+            if bare in _after_attributes(text):
+                return True
+            depth = _depth_after(0, text)
+        elif bare in text:
             return True
-        if depth or _ATTRIBUTE_LINE.match(text):
-            depth = max(0, depth + sum(map(text.count, "([{")) - sum(map(text.count, ")]}")))
         elif heads < _MAX_TYPE_HEAD_LINES and _is_type_head(text):
             heads += 1
         else:
             return False
     return False
+
+
+def _depth_after(depth: int, text: str) -> int:
+    return max(0, depth + sum(map(text.count, "([{")) - sum(map(text.count, ")]}")))
+
+
+def _after_attributes(text: str) -> str:
+    """*text* past its leading annotations (``@A(x) @B [C] #[d]``); empty when one stays open."""
+    i, n = 0, len(text)
+    while True:
+        while i < n and text[i].isspace():
+            i += 1
+        if text.startswith("@", i):
+            i += 1
+            while i < n and (text[i].isalnum() or text[i] in "_.:"):
+                i += 1
+            if not text.startswith("(", i):
+                continue
+        elif text.startswith("#[", i):
+            i += 1
+        elif not text.startswith("[", i):
+            return text[i:]
+        depth = 0
+        for j in range(i, n):
+            depth += (text[j] in "([{") - (text[j] in ")]}")
+            if not depth:
+                i = j + 1
+                break
+        else:
+            return ""
 
 
 def _is_type_head(text: str) -> bool:

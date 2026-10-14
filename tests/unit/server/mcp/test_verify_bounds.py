@@ -112,6 +112,14 @@ class TestNameAtLine:
         # Code above the definition is not an annotation, so a shift still fails.
         assert not name_at_line(["  int x = 1;", "  @Override", "  void run() {"], "run", 1)
 
+    def test_an_annotation_argument_does_not_define_the_name(self) -> None:
+        assert not name_at_line(['@Deprecated(since="foo")', "void bar() {"], "foo", 1)
+        assert name_at_line(['@Deprecated(since="foo")', "void foo() {"], "foo", 1)
+        assert name_at_line(["@cache", "def foo():"], "foo", 1)
+        # One line holding the annotation and the definition still passes.
+        assert name_at_line(["@Test fun parsesInput() {"], "parsesInput", 1)
+        assert not name_at_line(['@Named("parsesInput")', "fun other() {"], "parsesInput", 1)
+
     @pytest.mark.parametrize(
         "head",
         ["pass", "return", "x", "int x"],
