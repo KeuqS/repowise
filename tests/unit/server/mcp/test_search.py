@@ -6,6 +6,8 @@ test data, mirroring the conftest pattern from the REST API tests.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from repowise.core.persistence.search import strip_leading_headings
@@ -729,6 +731,47 @@ def test_symbol_coverage_folds_plurals_on_both_sides():
     assert score("declared_types_in", "declared type in") == full
     assert score("parseHeader", "parse headers") == score("parseHeader", "parse header")
     assert score("declared_types_in", "declared kind in") < full
+
+
+@pytest.mark.parametrize(
+    "name, plural, singular",
+    [
+        ("MyClass", "my classes", "my class"),
+        ("createFactory", "create factories", "create factory"),
+        ("commandNameMatch", "command name matches", "command name match"),
+        ("cacheEntry", "cache entries", "cache entry"),
+        ("parseResponse", "parse responses", "parse response"),
+        ("statusCode", "status codes", "status code"),
+    ],
+)
+def test_irregular_s_plurals_reach_the_singular_name(name, plural, singular):
+    from repowise.core.persistence.models import WikiSymbol
+    from repowise.server.mcp_server.tool_search_symbols import (
+        _candidate_filter,
+        _score_symbol,
+        _tokens,
+    )
+
+    row = WikiSymbol(name=name, qualified_name=name, file_path="src/a.py", language="python")
+    assert _score_symbol(row, None, _tokens(plural), plural) == _score_symbol(
+        row, None, _tokens(singular), singular
+    )
+    # The candidate filter is a substring LIKE per singular form; the plural
+    # word's own forms must reach the name.
+    clause = _candidate_filter(_tokens(plural), plural)
+    sql = str(clause.compile(compile_kwargs={"literal_binds": True})).lower()
+    word = plural.split()[-1]
+    likes = set(re.findall(r"'%([^%']+)%'", sql))
+    assert any(like in name.lower() and like[:3] == word[:3] for like in likes)
+
+
+def test_a_singular_y_word_finds_its_ies_plural():
+    from repowise.server.mcp_server.tool_search_symbols import _candidate_filter, _tokens
+
+    clause = _candidate_filter(_tokens("create factory"), "create factory")
+    sql = str(clause.compile(compile_kwargs={"literal_binds": True})).lower()
+    assert any(like in "createfactories" and like.startswith("fact")
+               for like in re.findall(r"'%([^%']+)%'", sql))
 
 
 class TestSymbolSearch:
